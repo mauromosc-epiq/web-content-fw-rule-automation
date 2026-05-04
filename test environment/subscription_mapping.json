@@ -1,0 +1,13 @@
+{
+  "_comment": "To add a scoped entry (specific resource group): { \"subscriptionId\": \"<id>\", \"resourceGroup\": \"<rg-name>\", \"rcgName\": \"<rcg-name>\" }. To add a subscription-wide entry (all resource groups): { \"subscriptionId\": \"<id>\", \"resourceGroup\": null, \"rcgName\": \"<rcg-name>\" }",
+  "regions": {
+    "eastus": "it-test-eus-fp"
+  },
+  "subscriptions": [
+    {
+      "subscriptionId": "52ce279b-e5da-4cad-87f7-e00d125ee4ba",
+      "resourceGroup": "it-t-binddns-rg",
+      "rcgName": "ls-test"
+    }
+  ]
+}

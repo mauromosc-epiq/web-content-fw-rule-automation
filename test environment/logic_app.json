@@ -1,0 +1,411 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "logicAppName": {
+      "type": "string",
+      "defaultValue": "web-content-fw-rule-creator"
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]"
+    },
+    "notificationEmail": {
+      "type": "string",
+      "defaultValue": "mauro.mosczynski@epiqglobal.com",
+      "metadata": { "description": "Email address that receives rule creation notifications" }
+    },
+    "functionAppUrl": {
+      "type": "string",
+      "metadata": { "description": "Azure Function App base URL, e.g. https://my-app.azurewebsites.net" }
+    },
+    "functionKey": {
+      "type": "securestring",
+      "metadata": { "description": "Azure Function host or function-level key" }
+    },
+    "logAnalyticsWorkspaceSubscriptionId": {
+      "type": "string",
+      "defaultValue": "67cbb141-a2e1-40de-bbd3-601e8dbb6879",
+      "metadata": { "description": "Subscription ID of the Log Analytics workspace" }
+    },
+    "logAnalyticsWorkspaceResourceGroup": {
+      "type": "string",
+      "defaultValue": "it-p-secops-workspaces-rg",
+      "metadata": { "description": "Resource Group of the Log Analytics workspace" }
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "defaultValue": "it-p-secops-global-log",
+      "metadata": { "description": "Name of the Log Analytics workspace" }
+    },
+    "configStorageAccountName": {
+      "type": "string",
+      "metadata": { "description": "Storage account name holding subscription_mapping.json" }
+    },
+    "office365ConnectionName": {
+      "type": "string",
+      "defaultValue": "office365"
+    },
+    "logAnalyticsConnectionName": {
+      "type": "string",
+      "defaultValue": "azuremonitorlogs"
+    }
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('office365ConnectionName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "displayName": "Office365",
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/office365')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Web/connections",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('logAnalyticsConnectionName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "displayName": "AzureMonitorLogs",
+        "api": {
+          "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/azuremonitorlogs')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Logic/workflows",
+      "apiVersion": "2016-06-01",
+      "name": "[parameters('logicAppName')]",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/connections', parameters('office365ConnectionName'))]",
+        "[resourceId('Microsoft.Web/connections', parameters('logAnalyticsConnectionName'))]"
+      ],
+      "properties": {
+        "state": "Enabled",
+        "definition": {
+          "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "$connections": {
+              "defaultValue": {},
+              "type": "Object"
+            },
+            "notificationEmail": {
+              "defaultValue": "",
+              "type": "String"
+            },
+            "functionAppUrl": {
+              "defaultValue": "",
+              "type": "String"
+            },
+            "functionKey": {
+              "defaultValue": "",
+              "type": "SecureString"
+            },
+            "configStorageAccountName": {
+              "defaultValue": "",
+              "type": "String"
+            },
+            "logAnalyticsWorkspaceSubscriptionId": {
+              "defaultValue": "",
+              "type": "String"
+            },
+            "logAnalyticsWorkspaceResourceGroup": {
+              "defaultValue": "",
+              "type": "String"
+            },
+            "logAnalyticsWorkspaceName": {
+              "defaultValue": "",
+              "type": "String"
+            }
+          },
+          "triggers": {
+            "Recurrence": {
+              "type": "Recurrence",
+              "recurrence": {
+                "frequency": "Minute",
+                "interval": 15
+              }
+            }
+          },
+          "actions": {
+            "Read_Subscription_Mapping": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "@{concat('https://', parameters('configStorageAccountName'), '.blob.core.windows.net/fw-rule-config/subscription_mapping.json')}",
+                "headers": {
+                  "x-ms-version": "2020-04-08"
+                },
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "audience": "https://storage.azure.com/"
+                }
+              },
+              "runAfter": {}
+            },
+            "Parse_Subscription_Mapping": {
+              "type": "ParseJson",
+              "inputs": {
+                "content": "@body('Read_Subscription_Mapping')",
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "regions": {
+                      "type": "object",
+                      "additionalProperties": { "type": "string" }
+                    },
+                    "subscriptions": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "subscriptionId": { "type": "string" },
+                          "resourceGroup":  { "type": ["string", "null"] },
+                          "rcgName":        { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "runAfter": {
+                "Read_Subscription_Mapping": [ "Succeeded" ]
+              }
+            },
+            "Run_IPAM_Query": {
+              "type": "ApiConnection",
+              "inputs": {
+                "host": {
+                  "connection": {
+                    "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                  }
+                },
+                "method": "post",
+                "path": "/queryData",
+                "queries": {
+                  "resourcegroups": "@parameters('logAnalyticsWorkspaceResourceGroup')",
+                  "resourcename": "@parameters('logAnalyticsWorkspaceName')",
+                  "resourcetype": "Log Analytics Workspace",
+                  "subscriptions": "@parameters('logAnalyticsWorkspaceSubscriptionId')",
+                  "timerange": "Set in query"
+                },
+                "body": {
+                  "query": "AVNMIPAMPoolAllocationChange\n| where TimeGenerated > ago(15m)\n| where ResultType == \"Success\"\n| where ChangeReason == \"ResourceAddedToPool\"\n| mv-expand allocation = parse_json(AllocationResources)\n| extend ResourceId = tostring(allocation.ResourceId)\n| extend SubscriptionId = tostring(split(ResourceId, \"/\")[2])\n| extend ResourceGroup = tostring(split(ResourceId, \"/\")[4])\n| extend VNetName = tostring(split(ResourceId, \"/\")[8])\n| mv-expand ResourceCidr = allocation.ResourceCidrs\n| extend ResourceCidr = tostring(ResourceCidr)\n| project TimeGenerated, ChangeReason, ResultType, SubscriptionId, ResourceGroup, VNetName, ResourceCidr, ResourceId\n| order by TimeGenerated desc"
+                }
+              },
+              "runAfter": {}
+            },
+            "For_each_result": {
+              "type": "Foreach",
+              "foreach": "@body('Run_IPAM_Query')?['value']",
+              "actions": {
+                "Filter_Subscription_Mapping": {
+                  "type": "Query",
+                  "inputs": {
+                    "from": "@body('Parse_Subscription_Mapping')?['subscriptions']",
+                    "where": "@and(equals(item()?['subscriptionId'], items('For_each_result')['SubscriptionId']), or(empty(string(item()?['resourceGroup'])), equals(item()?['resourceGroup'], items('For_each_result')['ResourceGroup'])))"
+                  },
+                  "runAfter": {}
+                },
+                "Check_VNet_In_Scope": {
+                  "type": "If",
+                  "expression": {
+                    "and": [
+                      {
+                        "greater": [
+                          "@length(body('Filter_Subscription_Mapping'))",
+                          0
+                        ]
+                      }
+                    ]
+                  },
+                  "actions": {
+                    "Compose_RCGName": {
+                      "type": "Compose",
+                      "inputs": "@{body('Filter_Subscription_Mapping')?[0]?['rcgName']}",
+                      "runAfter": {}
+                    },
+                    "Compose_ARG_Query_Body": {
+                      "type": "Compose",
+                      "inputs": {
+                        "query": "@{concat('Resources | where type =~ ''microsoft.network/virtualnetworks'' | where id =~ ''', items('For_each_result')['ResourceId'], ''' | project location')}",
+                        "subscriptions": [
+                          "@{items('For_each_result')['SubscriptionId']}"
+                        ]
+                      },
+                      "runAfter": {}
+                    },
+                    "Run_ARG_Query": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01",
+                        "headers": {
+                          "Content-Type": "application/json"
+                        },
+                        "body": "@outputs('Compose_ARG_Query_Body')",
+                        "authentication": {
+                          "type": "ManagedServiceIdentity"
+                        }
+                      },
+                      "runAfter": {
+                        "Compose_ARG_Query_Body": [ "Succeeded" ]
+                      }
+                    },
+                    "Compose_VNetRegion": {
+                      "type": "Compose",
+                      "inputs": "@{body('Run_ARG_Query')?['data']?['rows']?[0]?[0]}",
+                      "runAfter": {
+                        "Run_ARG_Query": [ "Succeeded" ]
+                      }
+                    },
+                    "Compose_FWPName": {
+                      "type": "Compose",
+                      "inputs": "@{body('Parse_Subscription_Mapping')?['regions']?[outputs('Compose_VNetRegion')]}",
+                      "runAfter": {
+                        "Compose_VNetRegion": [ "Succeeded" ]
+                      }
+                    },
+                    "Call_Azure_Function": {
+                      "type": "Http",
+                      "inputs": {
+                        "method": "POST",
+                        "uri": "@{concat(parameters('functionAppUrl'), '/api/create-fw-rule?code=', parameters('functionKey'))}",
+                        "headers": {
+                          "Content-Type": "application/json"
+                        },
+                        "body": {
+                          "vnet_name": "@{items('For_each_result')['VNetName']}",
+                          "resource_cidr": "@{items('For_each_result')['ResourceCidr']}",
+                          "fwp_name": "@{outputs('Compose_FWPName')}",
+                          "rcg_name": "@{outputs('Compose_RCGName')}"
+                        }
+                      },
+                      "limit": {
+                        "timeout": "PT15M"
+                      },
+                      "runAfter": {
+                        "Compose_RCGName": [ "Succeeded" ],
+                        "Compose_FWPName": [ "Succeeded" ]
+                      }
+                    },
+                    "Check_Function_Result": {
+                      "type": "If",
+                      "expression": {
+                        "and": [
+                          {
+                            "equals": [
+                              "@outputs('Call_Azure_Function')['statusCode']",
+                              200
+                            ]
+                          }
+                        ]
+                      },
+                      "actions": {
+                        "Send_Success_Notification": {
+                          "type": "ApiConnection",
+                          "inputs": {
+                            "host": {
+                              "connection": {
+                                "name": "@parameters('$connections')['office365']['connectionId']"
+                              }
+                            },
+                            "method": "post",
+                            "path": "/v2/Mail",
+                            "body": {
+                              "To": "@parameters('notificationEmail')",
+                              "Subject": "@{concat('[Web Content FW Rule] New rule configured — ', items('For_each_result')['VNetName'])}",
+                              "Body": "@{concat('<b>A new Web Content Firewall Rule has been successfully configured.</b><br><br><table><tr><td><b>VNet</b></td><td>', items('For_each_result')['VNetName'], '</td></tr><tr><td><b>CIDR</b></td><td>', items('For_each_result')['ResourceCidr'], '</td></tr><tr><td><b>Region</b></td><td>', outputs('Compose_VNetRegion'), '</td></tr><tr><td><b>Firewall Policy</b></td><td>', outputs('Compose_FWPName'), '</td></tr><tr><td><b>Rule Collection Group</b></td><td>', outputs('Compose_RCGName'), '</td></tr><tr><td><b>Rule Collection</b></td><td>', items('For_each_result')['VNetName'], '-application</td></tr></table>')}",
+                              "Importance": "Normal",
+                              "IsHtml": true
+                            }
+                          },
+                          "runAfter": {}
+                        }
+                      },
+                      "else": {
+                        "actions": {
+                          "Send_Failure_Notification": {
+                            "type": "ApiConnection",
+                            "inputs": {
+                              "host": {
+                                "connection": {
+                                  "name": "@parameters('$connections')['office365']['connectionId']"
+                                }
+                              },
+                              "method": "post",
+                              "path": "/v2/Mail",
+                              "body": {
+                                "To": "@parameters('notificationEmail')",
+                                "Subject": "@{concat('[Web Content FW Rule] Rule configuration FAILED — ', items('For_each_result')['VNetName'])}",
+                                "Body": "@{concat('<b>Web Content Firewall Rule configuration failed.</b><br><br><table><tr><td><b>VNet</b></td><td>', items('For_each_result')['VNetName'], '</td></tr><tr><td><b>CIDR</b></td><td>', items('For_each_result')['ResourceCidr'], '</td></tr><tr><td><b>Region</b></td><td>', outputs('Compose_VNetRegion'), '</td></tr><tr><td><b>Firewall Policy</b></td><td>', outputs('Compose_FWPName'), '</td></tr><tr><td><b>RCG</b></td><td>', outputs('Compose_RCGName'), '</td></tr></table><br><b>Error details:</b><br>', string(body('Call_Azure_Function')))}",
+                                "Importance": "High",
+                                "IsHtml": true
+                              }
+                            },
+                            "runAfter": {}
+                          }
+                        }
+                      },
+                      "runAfter": {
+                        "Call_Azure_Function": [ "Succeeded", "Failed" ]
+                      }
+                    }
+                  },
+                  "else": {
+                    "actions": {}
+                  },
+                  "runAfter": {
+                    "Filter_Subscription_Mapping": [ "Succeeded" ]
+                  }
+                }
+              },
+              "runAfter": {
+                "Run_IPAM_Query": [ "Succeeded" ],
+                "Parse_Subscription_Mapping": [ "Succeeded" ]
+              }
+            }
+          }
+        },
+        "parameters": {
+          "$connections": {
+            "value": {
+              "office365": {
+                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('office365ConnectionName'))]",
+                "connectionName": "[parameters('office365ConnectionName')]",
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/office365')]"
+              },
+              "azuremonitorlogs": {
+                "connectionId": "[resourceId('Microsoft.Web/connections', parameters('logAnalyticsConnectionName'))]",
+                "connectionName": "[parameters('logAnalyticsConnectionName')]",
+                "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', parameters('location'), '/managedApis/azuremonitorlogs')]"
+              }
+            }
+          },
+          "notificationEmail":                        { "value": "[parameters('notificationEmail')]" },
+          "functionAppUrl":                       { "value": "[parameters('functionAppUrl')]" },
+          "functionKey":                          { "value": "[parameters('functionKey')]" },
+          "configStorageAccountName":             { "value": "[parameters('configStorageAccountName')]" },
+          "logAnalyticsWorkspaceSubscriptionId":  { "value": "[parameters('logAnalyticsWorkspaceSubscriptionId')]" },
+          "logAnalyticsWorkspaceResourceGroup":   { "value": "[parameters('logAnalyticsWorkspaceResourceGroup')]" },
+          "logAnalyticsWorkspaceName":            { "value": "[parameters('logAnalyticsWorkspaceName')]" }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "logicAppPrincipalId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Logic/workflows', parameters('logicAppName')), '2016-06-01', 'Full').identity.principalId]"
+    }
+  }
+}
