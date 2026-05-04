@@ -286,6 +286,7 @@
                         "body": {
                           "vnet_name": "@{items('For_each_result')['VNetName']}",
                           "resource_cidr": "@{items('For_each_result')['ResourceCidr']}",
+                          "vnet_resource_group": "@{items('For_each_result')['ResourceGroup']}",
                           "fwp_name": "@{outputs('Compose_FWPName')}",
                           "rcg_name": "@{outputs('Compose_RCGName')}"
                         }
@@ -323,7 +324,7 @@
                             "path": "/v2/Mail",
                             "body": {
                               "To": "@parameters('notificationEmail')",
-                              "Subject": "@{concat('[Web Content FW Rule] New rule configured — ', items('For_each_result')['VNetName'])}",
+                              "Subject": "@{concat('[Web Content FW Rule] Rule configured/updated — ', items('For_each_result')['VNetName'])}",
                               "Body": "@{concat('<b>A new Web Content Firewall Rule has been successfully configured.</b><br><br><table><tr><td><b>VNet</b></td><td>', items('For_each_result')['VNetName'], '</td></tr><tr><td><b>CIDR</b></td><td>', items('For_each_result')['ResourceCidr'], '</td></tr><tr><td><b>Region</b></td><td>', outputs('Compose_VNetRegion'), '</td></tr><tr><td><b>Firewall Policy</b></td><td>', outputs('Compose_FWPName'), '</td></tr><tr><td><b>Rule Collection Group</b></td><td>', outputs('Compose_RCGName'), '</td></tr><tr><td><b>Rule Collection</b></td><td>', items('For_each_result')['VNetName'], '-application</td></tr></table>')}",
                               "Importance": "Normal",
                               "IsHtml": true

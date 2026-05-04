@@ -41,7 +41,7 @@ def get_next_rc_priority(rule_collections: list) -> int:
     )
 
 
-def build_rule_collection(name: str, priority: int, resource_cidr: str) -> FirewallPolicyFilterRuleCollection:
+def build_rule_collection(name: str, priority: int, source_cidrs: list) -> FirewallPolicyFilterRuleCollection:
     return FirewallPolicyFilterRuleCollection(
         name=name,
         priority=priority,
@@ -51,7 +51,7 @@ def build_rule_collection(name: str, priority: int, resource_cidr: str) -> Firew
             FirewallPolicyApplicationRule(
                 name=WEB_CONTENT_RULE_NAME,
                 rule_type="ApplicationRule",
-                source_addresses=[resource_cidr],
+                source_addresses=source_cidrs,
                 protocols=[
                     FirewallPolicyRuleApplicationProtocol(protocol_type="Https", port=443)
                 ],
@@ -71,7 +71,7 @@ def create_fw_rule(req: func.HttpRequest) -> func.HttpResponse:
     except ValueError:
         return func.HttpResponse("Invalid JSON body", status_code=400)
 
-    required = ["vnet_name", "resource_cidr", "fwp_name", "rcg_name"]
+    required = ["vnet_name", "resource_cidr", "vnet_resource_group", "fwp_name", "rcg_name"]
     missing = [f for f in required if not body.get(f)]
     if missing:
         return func.HttpResponse(
@@ -82,6 +82,7 @@ def create_fw_rule(req: func.HttpRequest) -> func.HttpResponse:
 
     vnet_name: str = body["vnet_name"]
     resource_cidr: str = body["resource_cidr"]
+    vnet_rg: str = body["vnet_resource_group"]
     fwp_name: str = body["fwp_name"]
     rcg_name: str = body["rcg_name"]
 
@@ -93,6 +94,24 @@ def create_fw_rule(req: func.HttpRequest) -> func.HttpResponse:
         credential = ManagedIdentityCredential()
         client = NetworkManagementClient(credential, subscription_id)
 
+        # Query VNet for its current full address space — used as the authoritative source
+        try:
+            vnet = client.virtual_networks.get(vnet_rg, vnet_name)
+        except ResourceNotFoundError:
+            return func.HttpResponse(
+                json.dumps({"error": f"VNet '{vnet_name}' not found in resource group '{vnet_rg}'"}),
+                status_code=404,
+                mimetype="application/json",
+            )
+
+        vnet_prefixes = sorted(vnet.address_space.address_prefixes or [])
+        if not vnet_prefixes:
+            return func.HttpResponse(
+                json.dumps({"error": f"VNet '{vnet_name}' has no address prefixes"}),
+                status_code=422,
+                mimetype="application/json",
+            )
+
         try:
             rcg = client.firewall_policy_rule_collection_groups.get(fwp_rg, fwp_name, rcg_name)
         except ResourceNotFoundError:
@@ -103,33 +122,68 @@ def create_fw_rule(req: func.HttpRequest) -> func.HttpResponse:
             )
 
         rule_collections = list(rcg.rule_collections or [])
+        existing_rc = next(
+            (rc for rc in rule_collections if hasattr(rc, "name") and rc.name == rc_name),
+            None,
+        )
 
-        existing_rc_names = {rc.name for rc in rule_collections if hasattr(rc, "name")}
-        if rc_name in existing_rc_names:
+        if existing_rc is None:
+            priority = get_next_rc_priority(rule_collections)
+            rule_collections.append(build_rule_collection(rc_name, priority, vnet_prefixes))
+            rcg.rule_collections = rule_collections
+            client.firewall_policy_rule_collection_groups.begin_create_or_update(
+                fwp_rg, fwp_name, rcg_name, rcg
+            ).result()
+            logging.info(f"Created RC '{rc_name}' (priority {priority}) with CIDRs {vnet_prefixes}")
             return func.HttpResponse(
-                json.dumps({"error": f"Rule collection '{rc_name}' already exists in RCG '{rcg_name}'"}),
-                status_code=409,
+                json.dumps({
+                    "status": "created",
+                    "firewall_policy": fwp_name,
+                    "rcg_name": rcg_name,
+                    "rc_name": rc_name,
+                    "priority": priority,
+                    "source_cidrs": vnet_prefixes,
+                }),
+                status_code=200,
                 mimetype="application/json",
             )
 
-        priority = get_next_rc_priority(rule_collections)
-        rule_collections.append(build_rule_collection(rc_name, priority, resource_cidr))
-        rcg.rule_collections = rule_collections
+        # RC already exists — sync source_addresses with VNet's current address space
+        web_rule = next(
+            (r for r in (existing_rc.rules or []) if r.name == WEB_CONTENT_RULE_NAME),
+            None,
+        )
+        current_sources = sorted(web_rule.source_addresses or []) if web_rule else []
 
+        if current_sources == vnet_prefixes:
+            logging.info(f"RC '{rc_name}' already up to date — no changes needed")
+            return func.HttpResponse(
+                json.dumps({
+                    "status": "no_change",
+                    "firewall_policy": fwp_name,
+                    "rcg_name": rcg_name,
+                    "rc_name": rc_name,
+                    "source_cidrs": vnet_prefixes,
+                }),
+                status_code=200,
+                mimetype="application/json",
+            )
+
+        if web_rule:
+            web_rule.source_addresses = vnet_prefixes
+        rcg.rule_collections = rule_collections
         client.firewall_policy_rule_collection_groups.begin_create_or_update(
             fwp_rg, fwp_name, rcg_name, rcg
         ).result()
-
-        logging.info(f"Added RC '{rc_name}' (priority {priority}) to RCG '{rcg_name}' in '{fwp_name}'")
-
+        logging.info(f"Updated RC '{rc_name}': {current_sources} → {vnet_prefixes}")
         return func.HttpResponse(
             json.dumps({
-                "status": "success",
+                "status": "updated",
                 "firewall_policy": fwp_name,
                 "rcg_name": rcg_name,
                 "rc_name": rc_name,
-                "priority": priority,
-                "source_cidr": resource_cidr,
+                "source_cidrs": vnet_prefixes,
+                "previous_cidrs": current_sources,
             }),
             status_code=200,
             mimetype="application/json",

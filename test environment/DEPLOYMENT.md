@@ -168,6 +168,15 @@ az role assignment create `
   --scope "/subscriptions/52ce279b-e5da-4cad-87f7-e00d125ee4ba/resourceGroups/it-test-vwan-rg"
 ```
 
+**Function App managed identity** — Reader on the subscription (required to query VNet address spaces):
+
+```powershell
+az role assignment create `
+  --assignee "<functionAppPrincipalId>" `
+  --role "Reader" `
+  --scope "/subscriptions/52ce279b-e5da-4cad-87f7-e00d125ee4ba"
+```
+
 **Logic App managed identity** — Storage Blob Data Reader on the config storage account:
 
 ```powershell
