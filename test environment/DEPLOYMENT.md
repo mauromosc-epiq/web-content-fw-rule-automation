@@ -76,7 +76,7 @@ az deployment group show \
 Note down:
 - `functionAppUrl` — e.g. `https://it-d-web-content-fw-rule-automation-fn.azurewebsites.net`
 - `functionAppPrincipalId` — the managed identity object ID
-- `configStorageAccountName` — e.g. `stcfgxxxxxxxx`
+- `configStorageAccountName` — `itdwcfwrulecfgst`
 
 ---
 
@@ -248,7 +248,7 @@ To add a new Azure region, add an entry under the `regions` object mapping the r
 | Function App | it-d-web-content-fw-rule-automation-fn | it-d-web-content-fw-rule-automation-rg |
 | App Service Plan | it-d-web-content-fw-rule-automation-fn-plan | it-d-web-content-fw-rule-automation-rg |
 | Function Storage Account | st`<uniqueString>` | it-d-web-content-fw-rule-automation-rg |
-| Config Storage Account | stcfg`<uniqueString>` | it-d-web-content-fw-rule-automation-rg |
+| Config Storage Account | itdwcfwrulecfgst | it-d-web-content-fw-rule-automation-rg |
 | Logic App | web-content-fw-rule-creator | it-d-web-content-fw-rule-automation-rg |
 | API Connection (email) | office365 | it-d-web-content-fw-rule-automation-rg |
 | API Connection (logs) | azuremonitorlogs | it-d-web-content-fw-rule-automation-rg |

@@ -23,7 +23,7 @@
   },
   "variables": {
     "storageAccountName": "[concat('st', uniqueString(resourceGroup().id))]",
-    "configStorageAccountName": "[concat('stcfg', uniqueString(resourceGroup().id))]",
+    "configStorageAccountName": "itdwcfwrulecfgst",
     "hostingPlanName": "[concat(parameters('functionAppName'), '-plan')]",
     "configContainerName": "fw-rule-config"
   },
