@@ -155,7 +155,7 @@ def create_fw_rule(req: func.HttpRequest) -> func.HttpResponse:
         )
         current_sources = sorted(web_rule.source_addresses or []) if web_rule else []
 
-        if current_sources == vnet_prefixes:
+        if web_rule and current_sources == vnet_prefixes:
             logging.info(f"RC '{rc_name}' already up to date — no changes needed")
             return func.HttpResponse(
                 json.dumps({
@@ -171,6 +171,19 @@ def create_fw_rule(req: func.HttpRequest) -> func.HttpResponse:
 
         if web_rule:
             web_rule.source_addresses = vnet_prefixes
+        else:
+            existing_rc.rules = list(existing_rc.rules or [])
+            existing_rc.rules.append(
+                FirewallPolicyApplicationRule(
+                    name=WEB_CONTENT_RULE_NAME,
+                    rule_type="ApplicationRule",
+                    source_addresses=vnet_prefixes,
+                    protocols=[
+                        FirewallPolicyRuleApplicationProtocol(protocol_type="Https", port=443)
+                    ],
+                    web_categories=WEB_CATEGORIES,
+                )
+            )
         rcg.rule_collections = rule_collections
         client.firewall_policy_rule_collection_groups.begin_create_or_update(
             fwp_rg, fwp_name, rcg_name, rcg
