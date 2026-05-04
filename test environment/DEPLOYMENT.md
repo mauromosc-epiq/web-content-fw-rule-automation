@@ -13,7 +13,8 @@ This solution automatically creates Azure Firewall Policy application rules when
 ## Prerequisites
 
 - [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/install-azure-cli) installed
-- Contributor access on subscription **Platform Connectivity Dev** (`52ce279b-e5da-4cad-87f7-e00d125ee4ba`)
+- Contributor access on subscription **Platform Connectivity Dev** (`52ce279b-e5da-4cad-87f7-e00d125ee4ba`) — required to deploy resources and assign roles
+- **Network Contributor** on resource group `it-test-vwan-rg` — required for the Function App managed identity to manage firewall policies (assigned in Phase 8)
 - Log Analytics Reader on workspace `it-p-secops-global-log`
 - PowerShell or Windows Terminal
 
