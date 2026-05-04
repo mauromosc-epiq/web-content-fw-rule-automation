@@ -234,46 +234,10 @@
                       "inputs": "@{body('Filter_Subscription_Mapping')?[0]?['rcgName']}",
                       "runAfter": {}
                     },
-                    "Compose_ARG_Query_Body": {
-                      "type": "Compose",
-                      "inputs": {
-                        "query": "@{concat('Resources | where type =~ ''microsoft.network/virtualnetworks'' | where id =~ ''', items('For_each_result')['ResourceId'], ''' | project location')}",
-                        "subscriptions": [
-                          "@{items('For_each_result')['SubscriptionId']}"
-                        ]
-                      },
-                      "runAfter": {}
-                    },
-                    "Run_ARG_Query": {
-                      "type": "Http",
-                      "inputs": {
-                        "method": "POST",
-                        "uri": "https://management.azure.com/providers/Microsoft.ResourceGraph/resources?api-version=2022-10-01",
-                        "headers": {
-                          "Content-Type": "application/json"
-                        },
-                        "body": "@outputs('Compose_ARG_Query_Body')",
-                        "authentication": {
-                          "type": "ManagedServiceIdentity"
-                        }
-                      },
-                      "runAfter": {
-                        "Compose_ARG_Query_Body": [ "Succeeded" ]
-                      }
-                    },
-                    "Compose_VNetRegion": {
-                      "type": "Compose",
-                      "inputs": "@{body('Run_ARG_Query')?['data']?['rows']?[0]?[0]}",
-                      "runAfter": {
-                        "Run_ARG_Query": [ "Succeeded" ]
-                      }
-                    },
                     "Compose_FWPName": {
                       "type": "Compose",
-                      "inputs": "@{body('Parse_Subscription_Mapping')?['regions']?[outputs('Compose_VNetRegion')]}",
-                      "runAfter": {
-                        "Compose_VNetRegion": [ "Succeeded" ]
-                      }
+                      "inputs": "@{body('Parse_Subscription_Mapping')?['regions']?[items('For_each_result')['Location']]}",
+                      "runAfter": {}
                     },
                     "Call_Azure_Function": {
                       "type": "Http",
@@ -325,7 +289,7 @@
                             "body": {
                               "To": "@parameters('notificationEmail')",
                               "Subject": "@{concat('[Web Content FW Rule] Rule configured/updated — ', items('For_each_result')['VNetName'])}",
-                              "Body": "@{concat('<b>A new Web Content Firewall Rule has been successfully configured.</b><br><br><table><tr><td><b>VNet</b></td><td>', items('For_each_result')['VNetName'], '</td></tr><tr><td><b>CIDR</b></td><td>', items('For_each_result')['ResourceCidr'], '</td></tr><tr><td><b>Region</b></td><td>', outputs('Compose_VNetRegion'), '</td></tr><tr><td><b>Firewall Policy</b></td><td>', outputs('Compose_FWPName'), '</td></tr><tr><td><b>Rule Collection Group</b></td><td>', outputs('Compose_RCGName'), '</td></tr><tr><td><b>Rule Collection</b></td><td>', items('For_each_result')['VNetName'], '-application</td></tr></table>')}",
+                              "Body": "@{concat('<b>A new Web Content Firewall Rule has been successfully configured.</b><br><br><table><tr><td><b>VNet</b></td><td>', items('For_each_result')['VNetName'], '</td></tr><tr><td><b>CIDR</b></td><td>', items('For_each_result')['ResourceCidr'], '</td></tr><tr><td><b>Region</b></td><td>', items('For_each_result')['Location'], '</td></tr><tr><td><b>Firewall Policy</b></td><td>', outputs('Compose_FWPName'), '</td></tr><tr><td><b>Rule Collection Group</b></td><td>', outputs('Compose_RCGName'), '</td></tr><tr><td><b>Rule Collection</b></td><td>', items('For_each_result')['VNetName'], '-application</td></tr></table>')}",
                               "Importance": "Normal",
                               "IsHtml": true
                             }
@@ -348,7 +312,7 @@
                               "body": {
                                 "To": "@parameters('notificationEmail')",
                                 "Subject": "@{concat('[Web Content FW Rule] Rule configuration FAILED — ', items('For_each_result')['VNetName'])}",
-                                "Body": "@{concat('<b>Web Content Firewall Rule configuration failed.</b><br><br><table><tr><td><b>VNet</b></td><td>', items('For_each_result')['VNetName'], '</td></tr><tr><td><b>CIDR</b></td><td>', items('For_each_result')['ResourceCidr'], '</td></tr><tr><td><b>Region</b></td><td>', outputs('Compose_VNetRegion'), '</td></tr><tr><td><b>Firewall Policy</b></td><td>', outputs('Compose_FWPName'), '</td></tr><tr><td><b>RCG</b></td><td>', outputs('Compose_RCGName'), '</td></tr></table><br><b>Error details:</b><br>', string(body('Call_Azure_Function')))}",
+                                "Body": "@{concat('<b>Web Content Firewall Rule configuration failed.</b><br><br><table><tr><td><b>VNet</b></td><td>', items('For_each_result')['VNetName'], '</td></tr><tr><td><b>CIDR</b></td><td>', items('For_each_result')['ResourceCidr'], '</td></tr><tr><td><b>Region</b></td><td>', items('For_each_result')['Location'], '</td></tr><tr><td><b>Firewall Policy</b></td><td>', outputs('Compose_FWPName'), '</td></tr><tr><td><b>RCG</b></td><td>', outputs('Compose_RCGName'), '</td></tr></table><br><b>Error details:</b><br>', string(body('Call_Azure_Function')))}",
                                 "Importance": "High",
                                 "IsHtml": true
                               }

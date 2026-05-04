@@ -187,15 +187,6 @@ az role assignment create `
   --scope "/subscriptions/52ce279b-e5da-4cad-87f7-e00d125ee4ba/resourceGroups/it-d-web-content-fw-rule-automation-rg/providers/Microsoft.Storage/storageAccounts/itdwcfwrulecfgst"
 ```
 
-**Logic App managed identity** — Reader on the subscription (required for Azure Resource Graph VNet region lookup):
-
-```powershell
-az role assignment create `
-  --assignee "<logicAppPrincipalId>" `
-  --role "Reader" `
-  --scope "/subscriptions/52ce279b-e5da-4cad-87f7-e00d125ee4ba"
-```
-
 ---
 
 ### Phase 9 — Authorize the API connections (Azure Portal)
