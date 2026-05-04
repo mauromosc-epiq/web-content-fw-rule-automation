@@ -159,12 +159,12 @@ az deployment group show `
 
 Replace `<functionAppPrincipalId>` and `<logicAppPrincipalId>` with the values captured in previous steps.
 
-**Function App managed identity** — Contributor on the firewall policy resource group:
+**Function App managed identity** — Network Contributor on the firewall policy resource group:
 
 ```powershell
 az role assignment create `
   --assignee "<functionAppPrincipalId>" `
-  --role "Contributor" `
+  --role "Network Contributor" `
   --scope "/subscriptions/52ce279b-e5da-4cad-87f7-e00d125ee4ba/resourceGroups/it-test-vwan-rg"
 ```
 
