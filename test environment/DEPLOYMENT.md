@@ -17,6 +17,8 @@ This solution automatically creates Azure Firewall Policy application rules when
 - Log Analytics Reader on workspace `it-p-secops-global-log`
 - PowerShell or Windows Terminal
 
+> **Note:** All commands below use PowerShell syntax. Line continuations use the backtick character (`` ` ``), not backslash (`\`).
+
 ---
 
 ## Files
@@ -36,7 +38,7 @@ This solution automatically creates Azure Firewall Policy application rules when
 
 ### Phase 1 — Login and set subscription
 
-```bash
+```powershell
 az login
 az account set --subscription "52ce279b-e5da-4cad-87f7-e00d125ee4ba"
 ```
@@ -45,9 +47,9 @@ az account set --subscription "52ce279b-e5da-4cad-87f7-e00d125ee4ba"
 
 ### Phase 2 — Create the resource group
 
-```bash
-az group create \
-  --name "it-d-web-content-fw-rule-automation-rg" \
+```powershell
+az group create `
+  --name "it-d-web-content-fw-rule-automation-rg" `
   --location "eastus"
 ```
 
@@ -57,19 +59,19 @@ az group create \
 
 Run from the folder containing the project files.
 
-```bash
-az deployment group create \
-  --resource-group "it-d-web-content-fw-rule-automation-rg" \
+```powershell
+az deployment group create `
+  --resource-group "it-d-web-content-fw-rule-automation-rg" `
   --template-file "function_app_deploy.json"
 ```
 
 When complete, retrieve the outputs — you will need them in later steps:
 
-```bash
-az deployment group show \
-  --resource-group "it-d-web-content-fw-rule-automation-rg" \
-  --name "function_app_deploy" \
-  --query "properties.outputs" \
+```powershell
+az deployment group show `
+  --resource-group "it-d-web-content-fw-rule-automation-rg" `
+  --name "function_app_deploy" `
+  --query "properties.outputs" `
   --output table
 ```
 
@@ -82,16 +84,16 @@ Note down:
 
 ### Phase 4 — Deploy the Function code
 
-Run from the folder containing the project files (PowerShell).
+Run from the folder containing the project files.
 
 ```powershell
 Compress-Archive -Path function_app.py, host.json, requirements.txt -DestinationPath function_code.zip -Force
 ```
 
-```bash
-az functionapp deployment source config-zip \
-  --resource-group "it-d-web-content-fw-rule-automation-rg" \
-  --name "it-d-web-content-fw-rule-automation-fn" \
+```powershell
+az functionapp deployment source config-zip `
+  --resource-group "it-d-web-content-fw-rule-automation-rg" `
+  --name "it-d-web-content-fw-rule-automation-fn" `
   --src "function_code.zip"
 ```
 
@@ -99,11 +101,11 @@ az functionapp deployment source config-zip \
 
 ### Phase 5 — Get the Function host key
 
-```bash
-az functionapp keys list \
-  --resource-group "it-d-web-content-fw-rule-automation-rg" \
-  --name "it-d-web-content-fw-rule-automation-fn" \
-  --query "functionKeys.default" \
+```powershell
+az functionapp keys list `
+  --resource-group "it-d-web-content-fw-rule-automation-rg" `
+  --name "it-d-web-content-fw-rule-automation-fn" `
+  --query "functionKeys.default" `
   --output tsv
 ```
 
@@ -113,15 +115,13 @@ Copy the key — it is required for the Logic App deployment.
 
 ### Phase 6 — Upload subscription_mapping.json to blob storage
 
-Replace `<configStorageAccountName>` with the value from Phase 3.
-
-```bash
-az storage blob upload \
-  --account-name "<configStorageAccountName>" \
-  --container-name "fw-rule-config" \
-  --name "subscription_mapping.json" \
-  --file "subscription_mapping.json" \
-  --auth-mode login \
+```powershell
+az storage blob upload `
+  --account-name "itdwcfwrulecfgst" `
+  --container-name "fw-rule-config" `
+  --name "subscription_mapping.json" `
+  --file "subscription_mapping.json" `
+  --auth-mode login `
   --overwrite
 ```
 
@@ -131,25 +131,25 @@ az storage blob upload \
 
 ### Phase 7 — Deploy the Logic App
 
-Replace `<functionAppUrl>`, `<functionKey>`, and `<configStorageAccountName>` with the values from previous steps.
+Replace `<functionAppUrl>` and `<functionKey>` with the values from previous steps.
 
-```bash
-az deployment group create \
-  --resource-group "it-d-web-content-fw-rule-automation-rg" \
-  --template-file "logic_app.json" \
-  --parameters \
-      functionAppUrl="<functionAppUrl>" \
-      functionKey="<functionKey>" \
-      configStorageAccountName="<configStorageAccountName>"
+```powershell
+az deployment group create `
+  --resource-group "it-d-web-content-fw-rule-automation-rg" `
+  --template-file "logic_app.json" `
+  --parameters `
+      functionAppUrl="<functionAppUrl>" `
+      functionKey="<functionKey>" `
+      configStorageAccountName="itdwcfwrulecfgst"
 ```
 
 Retrieve the Logic App principal ID:
 
-```bash
-az deployment group show \
-  --resource-group "it-d-web-content-fw-rule-automation-rg" \
-  --name "logic_app" \
-  --query "properties.outputs.logicAppPrincipalId.value" \
+```powershell
+az deployment group show `
+  --resource-group "it-d-web-content-fw-rule-automation-rg" `
+  --name "logic_app" `
+  --query "properties.outputs.logicAppPrincipalId.value" `
   --output tsv
 ```
 
@@ -157,32 +157,32 @@ az deployment group show \
 
 ### Phase 8 — Assign RBAC roles
 
-Replace `<functionAppPrincipalId>`, `<logicAppPrincipalId>`, and `<configStorageAccountName>` with the values captured in previous steps.
+Replace `<functionAppPrincipalId>` and `<logicAppPrincipalId>` with the values captured in previous steps.
 
 **Function App managed identity** — Contributor on the firewall policy resource group:
 
-```bash
-az role assignment create \
-  --assignee "<functionAppPrincipalId>" \
-  --role "Contributor" \
+```powershell
+az role assignment create `
+  --assignee "<functionAppPrincipalId>" `
+  --role "Contributor" `
   --scope "/subscriptions/52ce279b-e5da-4cad-87f7-e00d125ee4ba/resourceGroups/it-test-vwan-rg"
 ```
 
 **Logic App managed identity** — Storage Blob Data Reader on the config storage account:
 
-```bash
-az role assignment create \
-  --assignee "<logicAppPrincipalId>" \
-  --role "Storage Blob Data Reader" \
-  --scope "/subscriptions/52ce279b-e5da-4cad-87f7-e00d125ee4ba/resourceGroups/it-d-web-content-fw-rule-automation-rg/providers/Microsoft.Storage/storageAccounts/<configStorageAccountName>"
+```powershell
+az role assignment create `
+  --assignee "<logicAppPrincipalId>" `
+  --role "Storage Blob Data Reader" `
+  --scope "/subscriptions/52ce279b-e5da-4cad-87f7-e00d125ee4ba/resourceGroups/it-d-web-content-fw-rule-automation-rg/providers/Microsoft.Storage/storageAccounts/itdwcfwrulecfgst"
 ```
 
 **Logic App managed identity** — Reader on the subscription (required for Azure Resource Graph VNet region lookup):
 
-```bash
-az role assignment create \
-  --assignee "<logicAppPrincipalId>" \
-  --role "Reader" \
+```powershell
+az role assignment create `
+  --assignee "<logicAppPrincipalId>" `
+  --role "Reader" `
   --scope "/subscriptions/52ce279b-e5da-4cad-87f7-e00d125ee4ba"
 ```
 
