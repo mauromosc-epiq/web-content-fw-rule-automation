@@ -199,7 +199,7 @@
                   "timerange": "Set in query"
                 },
                 "body": {
-                  "query": "AVNMIPAMPoolAllocationChange\n| where TimeGenerated > ago(15m)\n| where ResultType == \"Success\"\n| where ChangeReason == \"ResourceAddedToPool\"\n| mv-expand allocation = parse_json(AllocationResources)\n| extend ResourceId = tostring(allocation.ResourceId)\n| extend SubscriptionId = tostring(split(ResourceId, \"/\")[2])\n| extend ResourceGroup = tostring(split(ResourceId, \"/\")[4])\n| extend VNetName = tostring(split(ResourceId, \"/\")[8])\n| mv-expand ResourceCidr = allocation.ResourceCidrs\n| extend ResourceCidr = tostring(ResourceCidr)\n| project TimeGenerated, ChangeReason, ResultType, SubscriptionId, ResourceGroup, VNetName, ResourceCidr, ResourceId\n| order by TimeGenerated desc"
+                  "query": "AVNMIPAMPoolAllocationChange\n| where ResultType == \"Success\"\n| where ChangeReason == \"ResourceAddedToPool\"\n| mv-expand allocation = parse_json(AllocationResources)\n| extend ResourceId = tostring(allocation.ResourceId)\n| extend SubscriptionId = tostring(split(ResourceId, \"/\")[2])\n| extend ResourceGroup = tostring(split(ResourceId, \"/\")[4])\n| extend VNetName = tostring(split(ResourceId, \"/\")[8])\n| mv-expand ResourceCidr = allocation.ResourceCidrs\n| extend ResourceCidr = tostring(ResourceCidr)\n| project\n    TimeGenerated,\n    ChangeReason,\n    ResultType,\n    SubscriptionId,\n    ResourceGroup,\n    VNetName,\n    ResourceCidr,\n    Location,\n    ResourceId\n| order by TimeGenerated desc"
                 }
               },
               "runAfter": {}
